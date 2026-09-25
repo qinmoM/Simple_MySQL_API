@@ -1,7 +1,7 @@
 #pragma once
 
 #include "jsonFile.hpp"
-#include "mysql.h"
+#include "mysql/mysql.h"
 #include <string>
 #include <vector>
 #include <memory>
