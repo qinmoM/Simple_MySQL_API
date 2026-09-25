@@ -53,18 +53,18 @@ private:
 
 };
 
-MysqlConn::MysqlConn()
+inline MysqlConn::MysqlConn()
 {
     con_ = mysql_init(nullptr);
     mysql_set_character_set(con_, "utf8");
 }
 
-MysqlConn::~MysqlConn()
+inline MysqlConn::~MysqlConn()
 {
     mysql_close(con_);
 }
 
-bool MysqlConn::connect(const std::string& user, const std::string& password, const std::string& database, const std::string& ip, unsigned int port)
+inline bool MysqlConn::connect(const std::string& user, const std::string& password, const std::string& database, const std::string& ip, unsigned int port)
 {
     if (!mysql_real_connect(con_, ip.c_str(), user.c_str(), password.c_str(), database.c_str(), port, nullptr, 0))
     {
@@ -73,7 +73,7 @@ bool MysqlConn::connect(const std::string& user, const std::string& password, co
     return true;
 }
 
-bool MysqlConn::update(const std::string& sql)
+inline bool MysqlConn::update(const std::string& sql)
 {
     if (mysql_query(con_, sql.c_str()))
     {
@@ -82,7 +82,7 @@ bool MysqlConn::update(const std::string& sql)
     return true;
 }
 
-bool MysqlConn::query(const std::string& sql, const std::string& filePath)
+inline bool MysqlConn::query(const std::string& sql, const std::string& filePath)
 {
     std::unique_ptr<MysqlConn::Table> table = query(sql);
     if (!table)
@@ -93,7 +93,7 @@ bool MysqlConn::query(const std::string& sql, const std::string& filePath)
     return file.write(table->value);
 }
 
-std::unique_ptr<MysqlConn::Table> MysqlConn::query(const std::string& sql)
+inline std::unique_ptr<MysqlConn::Table> MysqlConn::query(const std::string& sql)
 {
     if (!con_ || mysql_query(con_, sql.c_str()))
     {
@@ -145,17 +145,17 @@ std::unique_ptr<MysqlConn::Table> MysqlConn::query(const std::string& sql)
     return table;
 }
 
-bool MysqlConn::transaction()
+inline bool MysqlConn::transaction()
 {
     return mysql_autocommit(con_, false);
 }
 
-bool MysqlConn::commit()
+inline bool MysqlConn::commit()
 {
     return mysql_commit(con_);
 }
 
-bool MysqlConn::rollback()
+inline bool MysqlConn::rollback()
 {
     return mysql_rollback(con_);
 }
