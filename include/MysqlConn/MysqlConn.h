@@ -122,7 +122,14 @@ inline bool MysqlConn::connect(const std::string& user, const std::string& passw
     if (!mysql_real_connect(conn_, ip.c_str(), user.c_str(), password.c_str(), database.c_str(), port, nullptr, 0))
         return false;
 
-    return 0 == mysql_set_character_set(conn_, "utf8mb4");
+    if (0 != mysql_set_character_set(conn_, "utf8mb4"))
+    {
+        mysql_close(conn_);
+        conn_ = nullptr;
+        return false;
+    }
+
+    return true;
 }
 
 inline bool MysqlConn::execute(const std::string& sql)
