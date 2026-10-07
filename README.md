@@ -5,5 +5,6 @@
 ## Usage
 
 - Ensure the MySQL C library is set up on your local environment.
+- Ensure the [qinmo_tool](https://github.com/qinmoM/qinmo_tool) library exists.
 - Download the three files in the "include" folder. And put this in the directory where mysql.h is located.
 - include "MysqlConn.h" in main.cpp.

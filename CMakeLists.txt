@@ -5,6 +5,13 @@ project(MysqlConn)
 file(GLOB_RECURSE
     SOURCES ${PROJECT_SOURCE_DIR}/src/*.cpp
 )
+
+
+add_subdirectory(
+    external/qinmo_tool
+)
+
+
 add_executable(${PROJECT_NAME}
     ${SOURCES}
     ./main.cpp
@@ -27,4 +34,10 @@ target_link_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         mysql
+)
+
+
+target_link_libraries(${PROJECT_NAME}
+    PRIVATE
+        qinmo_tool
 )
