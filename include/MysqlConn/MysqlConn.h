@@ -1,32 +1,69 @@
 #pragma once
 
-#include "jsonFile.hpp"
 #include "mysql/mysql.h"
+#include "qinmo/tool.h"
+#include <iostream>
 #include <string>
 #include <vector>
 #include <memory>
 
+
+namespace qinmo
+{
+
 class MysqlConn
 {
 public:
-    struct Table
+    class Result
     {
-        Table(const std::vector<std::string>& colName)
-            : colName(colName)
+    public:
+        bool next()
         {
-            value = nlohmann::ordered_json(nlohmann::ordered_json::array());
+            row_ = mysql_fetch_row(res_);
+            lengths_ = mysql_fetch_lengths(res_);
+            col_ = 0;
+            return nullptr != row_;
+        }
+        qinmo::Optional<std::string> getString()
+        {
+            if (nullptr == row_)
+                throw std::runtime_error("MysqlConn::Result::getString: row_ does not exist");
+
+            if (nullptr == lengths_)
+                throw std::runtime_error("MysqlConn::Result::getString: lengths_ does not exist");
+
+            if (mysql_num_fields(res_) <= col_)
+                throw std::runtime_error("MysqlConn::Result::getString: access number out of range");
+
+            qinmo::Optional<std::string> op;
+            if (nullptr != row_[col_])
+                op.emplace(row_[col_], lengths_[col_]);
+
+            ++col_;
+            return op;
         }
 
-        std::vector<std::string> colName;
-        nlohmann::ordered_json value;
-    };
-
-    struct MysqlResDeleter
-    {
-        void operator()(MYSQL_RES* res) const
+        Result(MYSQL_RES* res, bool& hasResult)
+            : res_(res)
+            , hasResult_(hasResult)
+        { }
+        ~Result()
         {
-            if (res) mysql_free_result(res);
+            mysql_free_result(res_);
+            res_ = nullptr;
+            hasResult_ = false;
+            row_ = nullptr;
+            lengths_ = nullptr;
         }
+
+    private:
+        friend class MysqlConn;
+
+        MYSQL_ROW row_ = nullptr;
+        unsigned long* lengths_ = nullptr;
+        std::size_t col_ = 0;
+        MYSQL_RES* res_;
+        bool& hasResult_;
     };
 
 public:
@@ -34,128 +71,97 @@ public:
     ~MysqlConn();
 
 public:
+/*
+        init
+*/
+
     bool connect(const std::string& user, const std::string& password, const std::string& database, const std::string& ip = "localhost", unsigned int port = 3306);
 
-    bool update(const std::string& sql);
+/*
+        function
+*/
+    /// @note must call `getResult()` after query(`select ...`)
+    bool execute(const std::string& sql);
+    /// @return a handle of result, return `nullptr` on failure
+    /// @note cannot used after call the next `execute`
+    /// @note the lifetime of the result must be shorter than `MysqlConn`
+    std::unique_ptr<Result> getResult();
 
-    bool query(const std::string& sql, const std::string& filePath);
-
-    std::unique_ptr<Table> query(const std::string& sql);
+/*
+        transaction
+*/
 
     bool transaction();
-
     bool commit();
-
     bool rollback();
 
 private:
-    MYSQL* con_ = nullptr;
+    MYSQL* conn_ = nullptr;
+    bool hasResult_ = false;
 
 };
 
+
+
 inline MysqlConn::MysqlConn()
 {
-    con_ = mysql_init(nullptr);
-    mysql_set_character_set(con_, "utf8");
+    conn_ = mysql_init(nullptr);
 }
 
 inline MysqlConn::~MysqlConn()
 {
-    mysql_close(con_);
+    if (conn_)
+    {
+        mysql_close(conn_);
+        conn_ = nullptr;
+    }
 }
 
 inline bool MysqlConn::connect(const std::string& user, const std::string& password, const std::string& database, const std::string& ip, unsigned int port)
 {
-    if (!mysql_real_connect(con_, ip.c_str(), user.c_str(), password.c_str(), database.c_str(), port, nullptr, 0))
-    {
+    if (!mysql_real_connect(conn_, ip.c_str(), user.c_str(), password.c_str(), database.c_str(), port, nullptr, 0))
         return false;
-    }
+
+    return 0 == mysql_set_character_set(conn_, "utf8mb4");
+}
+
+inline bool MysqlConn::execute(const std::string& sql)
+{
+    if (nullptr == conn_ || hasResult_)
+        return false;
+
+    if (mysql_query(conn_, sql.c_str()))
+        return false;
+
     return true;
 }
 
-inline bool MysqlConn::update(const std::string& sql)
+inline std::unique_ptr<MysqlConn::Result> MysqlConn::getResult()
 {
-    if (mysql_query(con_, sql.c_str()))
-    {
-        return false;
-    }
-    return true;
-}
-
-inline bool MysqlConn::query(const std::string& sql, const std::string& filePath)
-{
-    std::unique_ptr<MysqlConn::Table> table = query(sql);
-    if (!table)
-    {
-        return false;
-    }
-    jsonFile file(filePath);
-    return file.write(table->value);
-}
-
-inline std::unique_ptr<MysqlConn::Table> MysqlConn::query(const std::string& sql)
-{
-    if (!con_ || mysql_query(con_, sql.c_str()))
-    {
+    if (nullptr == conn_ || hasResult_)
         return nullptr;
-    }
 
-    std::unique_ptr<MYSQL_RES, MysqlResDeleter> result(mysql_store_result(con_));
-    std::vector<std::string> colName;
-    if (0 == mysql_field_count(con_))
-    {
-        return std::make_unique<MysqlConn::Table>(colName);
-    }
-    if (!result)
-    {
-        if (mysql_field_count(con_))
-        {
-            std::cerr << "store == nullptr and field > 0\n" << mysql_errno(con_) << " : " << mysql_error(con_) << std::endl;
-        }
+    MYSQL_RES* res = mysql_store_result(conn_);
+    if (nullptr == res)
         return nullptr;
-    }
 
-    unsigned int count = mysql_num_fields(result.get());
-    for (int i = 0; i < count; ++i)
-    {
-        MYSQL_FIELD* field = mysql_fetch_field_direct(result.get(), i);
-        colName.push_back(std::string(field->name, field->name_length));
-    }
-
-    std::unique_ptr<MysqlConn::Table> table = std::make_unique<MysqlConn::Table>(colName);
-    MYSQL_ROW row = nullptr;
-    while ((row = mysql_fetch_row(result.get())) != nullptr)
-    {
-        nlohmann::ordered_json jsonTemp = nlohmann::ordered_json::object();
-        unsigned long* lengthArray = mysql_fetch_lengths(result.get());
-        for (int i = 0; i < count; ++i)
-        {
-            if (row[i])
-            {
-                jsonTemp[colName[i]] = std::string(row[i], lengthArray[i]);
-            }
-            else
-            {
-                jsonTemp[colName[i]] = nullptr;
-            }
-        }
-        table->value.push_back(jsonTemp);
-    }
-
-    return table;
+    hasResult_ = true;
+    return qinmo::make_unique<MysqlConn::Result>(res, hasResult_);
 }
 
 inline bool MysqlConn::transaction()
 {
-    return mysql_autocommit(con_, false);
+    return 0 == mysql_autocommit(conn_, false);
 }
 
 inline bool MysqlConn::commit()
 {
-    return mysql_commit(con_);
+    return 0 == mysql_commit(conn_);
 }
 
 inline bool MysqlConn::rollback()
 {
-    return mysql_rollback(con_);
+    return 0 == mysql_rollback(conn_);
 }
+
+} // namespace qinmo

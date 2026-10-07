@@ -1,24 +1,58 @@
 #include "MysqlConn.h"
+#include <iostream>
 
-const char* ip = "localhost";
-// const char* ip = "127.0.0.1";
+const char* ip = "localhost"; // const char* ip = "127.0.0.1";
 const char* user = "root";
 const char* pw = "123456";
 const char* databaseName = "test";
 const int port = 3306;
 
+
+template <class T>
+using optional = qinmo::Optional<T>;
+using MysqlConnect = qinmo::MysqlConn;
+
+
+
 int main()
 {
-    MysqlConn con;
-    if (!con.connect(user, pw, databaseName, ip, port))
+    MysqlConnect conn;
+    conn.connect(user, pw, databaseName, ip, port);
+    conn.execute(R"(select * from table1;)");
     {
-        std::cerr << "Failed to connect." << std::endl;
+        auto res = conn.getResult();
+
+        while (res->next())
+        {
+            optional<std::string> id = res->getString();
+            optional<std::string> gender = res->getString();
+            optional<std::string> salary = res->getString();
+
+            qinmo::print("id ", *id, ": ");
+            gender
+                .or_else([](){
+                    qinmo::print("unknown");
+                    return optional<std::string>();
+                })
+                .transform([](const std::string& str){
+                    qinmo::print("1" == str ? "male" : "female");
+                    return str;
+                });
+            qinmo::println(", salary: ", *salary);
+        }
     }
 
-    if (con.query(R"(select * from table1;)", "../data/test1.json"))
-    {
-        std::cout << "File created successful." << std::endl;
-    }
+    if (conn.execute(R"(select * from table1;)"))
+        qinmo::println("success.");
+    conn.getResult();
+
+
+    // MysqlConn con;
+    // if (!con.connect(user, pw, databaseName, ip, port))
+    //     std::cerr << "Failed to connect." << std::endl;
+
+    // if (con.query(R"(select * from table1;)", "../data/test1.json"))
+    //     std::cout << "File created successful." << std::endl;
 
     // MYSQL* con = mysql_init(nullptr);
     // // mysql_set_character_set(con, "utf8");

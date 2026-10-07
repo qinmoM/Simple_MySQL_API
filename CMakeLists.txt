@@ -34,10 +34,5 @@ target_link_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
     PRIVATE
         mysql
-)
-
-
-target_link_libraries(${PROJECT_NAME}
-    PRIVATE
         qinmo_tool
 )
